@@ -16,7 +16,7 @@ then marks the exception as routed in the database.
 from __future__ import annotations
 
 import sqlite3
-from typing import List
+from typing import List, Optional
 
 from classifier import EDIException
 from config import AppConfig
@@ -28,6 +28,7 @@ def route(
     exc: EDIException,
     config: AppConfig,
     conn: sqlite3.Connection,
+    templates: Optional[dict] = None,
 ) -> str:
     """
     Apply routing rules to a single exception.
@@ -42,7 +43,7 @@ def route(
         recipients = [r.ops_manager] if r.ops_manager else []
         rule = "rule-1-env-error"
         if recipients:
-            send_immediate(smtp, recipients, exc, rule, conn)
+            send_immediate(smtp, recipients, exc, rule, conn, templates)
         if exc.exception_id is not None:
             mark_exception_routed(conn, exc.exception_id, "sent" if recipients else "suppressed")
         return rule
@@ -52,7 +53,7 @@ def route(
         recipients = [r.ops_manager] if r.ops_manager else []
         rule = "rule-2-critical"
         if recipients:
-            send_immediate(smtp, recipients, exc, rule, conn)
+            send_immediate(smtp, recipients, exc, rule, conn, templates)
         if exc.exception_id is not None:
             mark_exception_routed(conn, exc.exception_id, "sent" if recipients else "suppressed")
         return rule
@@ -62,7 +63,7 @@ def route(
         recipients = [addr for addr in (r.edi_team, r.team_lead) if addr]
         rule = "rule-3-high-997"
         if recipients:
-            send_immediate(smtp, recipients, exc, rule, conn)
+            send_immediate(smtp, recipients, exc, rule, conn, templates)
         if exc.exception_id is not None:
             mark_exception_routed(conn, exc.exception_id, "sent" if recipients else "suppressed")
         return rule
@@ -72,7 +73,7 @@ def route(
         recipients = [r.wms_team] if r.wms_team else []
         rule = "rule-4-high"
         if recipients:
-            send_immediate(smtp, recipients, exc, rule, conn)
+            send_immediate(smtp, recipients, exc, rule, conn, templates)
         if exc.exception_id is not None:
             mark_exception_routed(conn, exc.exception_id, "sent" if recipients else "suppressed")
         return rule
@@ -101,6 +102,7 @@ def route_all(
     exceptions: List[EDIException],
     config: AppConfig,
     conn: sqlite3.Connection,
+    templates: Optional[dict] = None,
 ) -> List[str]:
     """Route a list of exceptions. Returns list of matched rule names."""
-    return [route(exc, config, conn) for exc in exceptions]
+    return [route(exc, config, conn, templates) for exc in exceptions]

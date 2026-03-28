@@ -43,10 +43,12 @@ class EDIWatcher:
         config: AppConfig,
         conn: sqlite3.Connection,
         event_queue: queue.Queue,
+        templates: Optional[dict] = None,
     ):
         self.config = config
         self.conn = conn
         self.event_queue = event_queue
+        self.templates = templates or {}
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -201,7 +203,7 @@ class EDIWatcher:
             })
 
         # Route all (sends emails / enqueues batches)
-        rules = route_all(exceptions, self.config, self.conn)
+        rules = route_all(exceptions, self.config, self.conn, self.templates)
 
         for exc, rule in zip(exceptions, rules):
             if rule.startswith("rule-1") or rule.startswith("rule-2") or \

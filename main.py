@@ -17,6 +17,7 @@ import sys
 
 from config import load_config
 from db import init_db
+from templates import load_templates
 from ui_textual import EDIRouterApp
 from watcher import EDIWatcher
 
@@ -35,15 +36,18 @@ def main() -> None:
     # Open / initialize database
     conn = init_db()
 
+    # Load custom email templates (empty dict if templates.toml doesn't exist yet)
+    templates = load_templates()
+
     # Event queue for watcher → TUI communication
     event_queue: queue.Queue = queue.Queue(maxsize=500)
 
     # Start background watcher (daemon thread — dies automatically if main exits)
-    watcher = EDIWatcher(config, conn, event_queue)
+    watcher = EDIWatcher(config, conn, event_queue, templates)
     watcher.start()
 
     # Launch Textual TUI (blocks until user presses Q)
-    app = EDIRouterApp(config, conn, event_queue)
+    app = EDIRouterApp(config, conn, event_queue, templates)
     app.run()
 
     # Graceful shutdown

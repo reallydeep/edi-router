@@ -310,6 +310,25 @@ def log_routing(
     conn.commit()
 
 
+def get_routing_log(
+    conn: sqlite3.Connection,
+    limit: int = 100,
+) -> List[dict]:
+    """Return recent routing log entries for the Email Log tab."""
+    rows = conn.execute(
+        """
+        SELECT rl.id, rl.sent_at, rl.recipient, rl.route_rule,
+               rl.success, rl.error_message,
+               e.error_code, e.severity, e.tx_type
+        FROM routing_log rl
+        LEFT JOIN exceptions e ON rl.exception_id = e.id
+        ORDER BY rl.sent_at DESC LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_last_batch_sent(conn: sqlite3.Connection, batch_type: str) -> Optional[datetime]:
     """Return the UTC datetime of the most recent successful batch send of given type."""
     row = conn.execute(

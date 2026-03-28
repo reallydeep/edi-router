@@ -31,14 +31,19 @@ def _build_immediate_email(
     from_address: str,
     recipients: List[str],
     rule_name: str,
+    custom_subject: Optional[str] = None,
+    custom_body: Optional[str] = None,
 ) -> MIMEMultipart:
-    severity_prefix = {
-        "CRITICAL": "[CRITICAL] EDI Alert",
-        "HIGH": "[HIGH] EDI Alert",
-    }.get(exc.severity, "[EDI Alert]")
+    if custom_subject:
+        subject = custom_subject
+    else:
+        severity_prefix = {
+            "CRITICAL": "[CRITICAL] EDI Alert",
+            "HIGH": "[HIGH] EDI Alert",
+        }.get(exc.severity, "[EDI Alert]")
+        subject = f"{severity_prefix} — {exc.error_code} | TX {exc.tx_type}"
 
-    subject = f"{severity_prefix} — {exc.error_code} | TX {exc.tx_type}"
-    body = _immediate_body(exc, rule_name)
+    body = custom_body if custom_body else _immediate_body(exc, rule_name)
 
     msg = MIMEMultipart()
     msg["From"] = from_address
@@ -152,15 +157,34 @@ def send_immediate(
     exc: EDIException,
     rule_name: str,
     conn: Optional[sqlite3.Connection] = None,
+    templates: Optional[dict] = None,
 ) -> bool:
     """
     Send an immediate alert email for a single exception.
-    Logs result to routing_log if conn is provided.
-    Returns True on success.
+    If a custom template exists for the exception's error code, it is used
+    instead of the default subject/body. Logs result to routing_log if conn
+    is provided. Returns True on success.
     """
     from db import log_routing
 
-    msg = _build_immediate_email(exc, smtp_config.from_address, recipients, rule_name)
+    custom_subject = None
+    custom_body = None
+    if templates:
+        tmpl = templates.get(exc.error_code)
+        if tmpl:
+            from templates import render
+            custom_subject, custom_body = render(
+                tmpl,
+                exc.error_code,
+                exc.severity,
+                exc.tx_type or "?",
+                exc.description or "",
+            )
+
+    msg = _build_immediate_email(
+        exc, smtp_config.from_address, recipients, rule_name,
+        custom_subject, custom_body,
+    )
     error = _send_message(smtp_config, msg)
     success = error is None
 

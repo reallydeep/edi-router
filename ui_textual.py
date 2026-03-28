@@ -41,8 +41,9 @@ from textual.widgets import (
 )
 
 from config import AppConfig, save_config
-from db import get_exceptions_for_dashboard, get_last_batch_sent
+from db import get_exceptions_for_dashboard, get_last_batch_sent, get_routing_log
 from parser import parse_raw, get_element
+from templates import load_templates, save_templates, render as render_template
 
 
 # ---------------------------------------------------------------------------
@@ -261,6 +262,206 @@ class RulesTab(Container):
             f"  team_lead    → {r.team_lead or '(not configured)'}"
         )
         static.update(text)
+
+
+# ---------------------------------------------------------------------------
+# Email Log Tab
+# ---------------------------------------------------------------------------
+
+class EmailLogTab(Container):
+    def __init__(self, conn: sqlite3.Connection):
+        super().__init__()
+        self._conn = conn
+
+    def compose(self) -> ComposeResult:
+        yield Horizontal(
+            Label("[bold]Email Send Log[/]", id="log-title", markup=True),
+            Button("Refresh", id="btn-log-refresh", variant="primary"),
+            id="log-header",
+        )
+        yield DataTable(id="log-table", cursor_type="row")
+
+    def on_mount(self) -> None:
+        table = self.query_one(DataTable)
+        table.add_columns("Time", "Error Code", "Severity", "TX", "Recipient", "Rule", "Status")
+        self._load_log()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-log-refresh":
+            self._load_log()
+
+    def _load_log(self) -> None:
+        table = self.query_one("#log-table", DataTable)
+        table.clear()
+        rows = get_routing_log(self._conn, limit=100)
+        for row in rows:
+            sent_at = (row.get("sent_at") or "")[:16]
+            error_code = row.get("error_code") or "—"
+            sev = row.get("severity") or "—"
+            sev_badge = SEVERITY_BADGE.get(sev, sev) if sev != "—" else "[dim]—[/]"
+            tx = row.get("tx_type") or "—"
+            recipient = row.get("recipient") or "—"
+            rule = row.get("route_rule") or "—"
+            success = row.get("success")
+            if success == 1:
+                status = "[green]✓ sent[/]"
+            elif success == 0:
+                err = row.get("error_message") or "failed"
+                status = f"[red]✗ {err[:30]}[/]"
+            else:
+                status = "[dim]—[/]"
+            table.add_row(sent_at, error_code, sev_badge, tx, recipient, rule, status)
+
+
+# ---------------------------------------------------------------------------
+# Templates Tab
+# ---------------------------------------------------------------------------
+
+KNOWN_ERROR_CODES = [
+    "E-ENV-001", "E-ENV-002", "E-ENV-003", "E-ENV-004", "E-ENV-005",
+    "E-997-REJ", "E-810-AMT", "E-856-STR", "E-850-STR", "E-855-STR", "E-860-STR",
+    "E-UNK-TX", "E-DUP-ISA", "E-STALE",
+]
+
+DEFAULT_SUBJECT = {
+    "CRITICAL": "[CRITICAL] EDI Alert — {error_code} | TX {tx_type}",
+    "HIGH":     "[HIGH] EDI Alert — {error_code} | TX {tx_type}",
+}
+DEFAULT_SUBJECT_FALLBACK = "[EDI Alert] — {error_code} | TX {tx_type}"
+
+DEFAULT_BODY = (
+    "EDI EXCEPTION ALERT\n"
+    "==================================================\n\n"
+    "Severity:    {severity}\n"
+    "Error Code:  {error_code}\n"
+    "TX Type:     {tx_type}\n"
+    "File:        {filename}\n\n"
+    "Description:\n"
+    "{description}\n\n"
+    "==================================================\n"
+    "Sent by EDI Exception Auto-Router"
+)
+
+
+class TemplatesTab(VerticalScroll):
+    def __init__(self, templates: dict):
+        super().__init__()
+        self._templates = templates  # shared mutable dict
+
+    def compose(self) -> ComposeResult:
+        # ── Saved templates table ────────────────────────────────────────
+        yield Label("[bold]Saved Custom Templates[/]", classes="section-title", markup=True)
+        yield Label(
+            "Click a row to load it into the editor below.",
+            classes="routing-hint",
+        )
+        yield DataTable(id="tmpl-saved-table", cursor_type="row")
+
+        # ── Editor ───────────────────────────────────────────────────────
+        yield Label("[bold]Edit Template[/]", classes="section-title", markup=True)
+        yield Label(
+            "Placeholders:  {error_code}  {severity}  {tx_type}  {description}  {filename}",
+            id="tmpl-placeholders",
+        )
+        yield _field_row("Error Code:", Input(
+            placeholder="e.g. E-997-REJ", id="tmpl-code",
+        ))
+        yield _field_row("Subject:", Input(
+            placeholder="Leave blank to use default subject", id="tmpl-subject",
+        ))
+        yield Label("Body:", classes="field-label", id="tmpl-body-label")
+        yield TextArea(id="tmpl-body")
+        yield Label(
+            "Leave body blank to use the default body.",
+            classes="routing-hint",
+        )
+        yield Horizontal(
+            Button("Save Template", id="btn-tmpl-save", variant="primary"),
+            Button("Delete Template", id="btn-tmpl-delete"),
+            Button("Reset Fields", id="btn-tmpl-reset"),
+            Static("", id="tmpl-result", classes="test-result"),
+            classes="field-row save-row",
+        )
+
+    def on_mount(self) -> None:
+        table = self.query_one("#tmpl-saved-table", DataTable)
+        table.add_columns("Error Code", "Custom Subject")
+        self._refresh_saved_table()
+
+    def _refresh_saved_table(self) -> None:
+        table = self.query_one("#tmpl-saved-table", DataTable)
+        table.clear()
+        if not self._templates:
+            table.add_row("(none saved)", "")
+        else:
+            for code, tmpl in sorted(self._templates.items()):
+                subj_preview = (tmpl.get("subject") or "")[:60] or "[dim](no subject)[/]"
+                table.add_row(code, subj_preview, key=code)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.data_table.id != "tmpl-saved-table":
+            return
+        row_key = event.row_key.value if event.row_key else None
+        if not row_key or row_key == "(none saved)":
+            return
+        self._load_code(row_key)
+
+    def _load_code(self, code: str) -> None:
+        self.query_one("#tmpl-code", Input).value = code
+        tmpl = self._templates.get(code, {})
+        self.query_one("#tmpl-subject", Input).value = tmpl.get("subject", "")
+        self.query_one("#tmpl-body", TextArea).load_text(tmpl.get("body", ""))
+        self.query_one("#tmpl-result", Static).update("")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-tmpl-save":
+            self._save()
+        elif event.button.id == "btn-tmpl-delete":
+            self._delete()
+        elif event.button.id == "btn-tmpl-reset":
+            self._reset_fields()
+
+    def _save(self) -> None:
+        result = self.query_one("#tmpl-result", Static)
+        code = self.query_one("#tmpl-code", Input).value.strip().upper()
+        if not code:
+            result.update("[red]✗ Enter an error code first[/]")
+            return
+
+        subject = self.query_one("#tmpl-subject", Input).value.strip()
+        body = self.query_one("#tmpl-body", TextArea).text.strip()
+
+        self._templates[code] = {"subject": subject, "body": body}
+        try:
+            save_templates(self._templates)
+            result.update("[green]✓ Saved[/]")
+            self._refresh_saved_table()
+        except Exception as e:
+            result.update(f"[red]✗ {e}[/]")
+
+    def _delete(self) -> None:
+        result = self.query_one("#tmpl-result", Static)
+        code = self.query_one("#tmpl-code", Input).value.strip().upper()
+        if not code:
+            result.update("[red]✗ Enter an error code first[/]")
+            return
+        if code not in self._templates:
+            result.update("[yellow]No custom template for that code[/]")
+            return
+        del self._templates[code]
+        try:
+            save_templates(self._templates)
+            result.update(f"[green]✓ Deleted template for {code}[/]")
+            self._reset_fields()
+            self._refresh_saved_table()
+        except Exception as e:
+            result.update(f"[red]✗ {e}[/]")
+
+    def _reset_fields(self) -> None:
+        self.query_one("#tmpl-code", Input).value = ""
+        self.query_one("#tmpl-subject", Input).value = ""
+        self.query_one("#tmpl-body", TextArea).load_text("")
+        self.query_one("#tmpl-result", Static).update("")
 
 
 # ---------------------------------------------------------------------------
@@ -810,6 +1011,71 @@ SettingsTab Switch {
     border-top: solid #2a2a2a;
     padding-top: 1;
 }
+
+/* ── Email Log tab ────────────────────────────────────────── */
+
+#log-header {
+    height: 3;
+    margin-bottom: 1;
+    align: left middle;
+}
+
+#log-title {
+    color: #ff8c00;
+    margin-right: 2;
+    width: auto;
+}
+
+#log-table {
+    height: 1fr;
+    background: #111111;
+}
+
+/* ── Templates tab ────────────────────────────────────────── */
+
+#tmpl-saved-table {
+    height: auto;
+    max-height: 10;
+    margin-bottom: 1;
+    background: #111111;
+}
+
+#tmpl-placeholders {
+    color: #555555;
+    padding: 0 0 1 23;
+}
+
+#tmpl-body-label {
+    width: 22;
+    color: #888888;
+    padding: 0 1 0 1;
+    text-align: right;
+}
+
+TemplatesTab TextArea {
+    height: 10;
+    background: #111111;
+    color: #cccccc;
+    border: solid #333333;
+    margin-bottom: 1;
+    margin-left: 22;
+    width: 1fr;
+}
+
+TemplatesTab TextArea:focus {
+    border: solid #ff8c00;
+}
+
+TemplatesTab Input {
+    width: 40;
+    background: #111111;
+    color: #cccccc;
+    border: tall #2a2a2a;
+}
+
+TemplatesTab Input:focus {
+    border: tall #ff8c00;
+}
 """
 
 
@@ -823,6 +1089,8 @@ class EDIRouterApp(App):
         Binding("2", "focus_tab('tab-parser')", "Parser"),
         Binding("3", "focus_tab('tab-rules')", "Rules"),
         Binding("4", "focus_tab('tab-settings')", "Settings"),
+        Binding("5", "focus_tab('tab-emaillog')", "Email Log"),
+        Binding("6", "focus_tab('tab-templates')", "Templates"),
     ]
 
     def __init__(
@@ -830,11 +1098,13 @@ class EDIRouterApp(App):
         config: AppConfig,
         conn: sqlite3.Connection,
         event_queue: queue.Queue,
+        templates: Optional[dict] = None,
     ):
         super().__init__()
         self._config = config
         self._conn = conn
         self._event_queue = event_queue
+        self._templates = templates if templates is not None else {}
         self._status_message = "Ready"
         self._demo_running = False
 
@@ -867,6 +1137,10 @@ class EDIRouterApp(App):
                 yield RulesTab(self._config, self._conn)
             with TabPane("Settings [4]", id="tab-settings"):
                 yield SettingsTab(self._config)
+            with TabPane("Email Log [5]", id="tab-emaillog"):
+                yield EmailLogTab(self._conn)
+            with TabPane("Templates [6]", id="tab-templates"):
+                yield TemplatesTab(self._templates)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -911,8 +1185,15 @@ class EDIRouterApp(App):
         except Exception:
             pass  # widget may not be mounted yet on first call
 
+    def _refresh_email_log(self) -> None:
+        try:
+            self.query_one(EmailLogTab)._load_log()
+        except Exception:
+            pass
+
     def action_manual_refresh(self) -> None:
         self.refresh_table()
+        self._refresh_email_log()
 
     def action_focus_tab(self, tab_id: str) -> None:
         try:
@@ -955,6 +1236,7 @@ class EDIRouterApp(App):
             rule = event.get("rule", "")
             code = event.get("error_code", "")
             self.sub_title = f"Email sent: {code} via {rule}"
+            self._refresh_email_log()
 
         elif etype == "demo_start":
             total = event.get("total", 0)
