@@ -1,0 +1,24 @@
+[connection]
+protocol = "sftp"               # "sftp" (port 22, SSH-based) or "ftp" (port 21, plain FTP)
+host = ""
+port = 22
+username = ""
+password = ""
+remote_path = "/edi/inbound"
+poll_interval_seconds = 300     # how often to check for new files (default: 5 min)
+verify_host_key = false         # set to true in production with a known_hosts file
+
+[smtp]
+host = ""
+port = 587
+username = ""
+password = ""
+from_address = "edi-router@bergen.com"
+use_ssl = false                 # false = STARTTLS (port 587), true = SSL (port 465)
+# Microsoft 365 note: generate an App Password in M365 admin portal and use it above
+
+[routing]
+ops_manager = ""                # immediate alerts: CRITICAL + envelope errors
+edi_team = ""                   # hourly batches (MEDIUM), daily digest (LOW), HIGH 997s
+wms_team = ""                   # immediate alerts: HIGH (non-997)
+team_lead = ""                  # cc'd on HIGH 997 alerts alongside edi_team

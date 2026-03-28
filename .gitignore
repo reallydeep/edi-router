@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.DS_Store
+
+# Runtime files (should live next to .exe, not in the repo)
+edi_router.db
+*.db
+
+# PyInstaller
+build/
+dist/
+*.spec
+
+# Secrets — NEVER commit config with real credentials
+# config.toml is kept in the repo as a template (all values empty)

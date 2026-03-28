@@ -1,0 +1,5 @@
+paramiko>=3.4.0
+textual>=0.47.0
+tomli>=2.0.0; python_version < "3.11"
+cryptography>=42.0.0
+bcrypt>=4.1.0
