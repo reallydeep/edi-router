@@ -98,7 +98,7 @@ Severity badges are color-coded — **CRITICAL** in red, **HIGH** in amber, **ME
 │  ST Control:   0001        Sender: AMZN000001    Receiver: GOOGLE01                   │
 │  Date/Time:    260328 1005     Segments: 8                                             │
 │                                                                                        │
-│  ISA      00 |           | 00 |           | ZZ | BERGEN01        (envelope)           │
+│  ISA      00 |           | 00 |           | ZZ | GOOGLE01        (envelope)           │
 │  GS       FA | AMZN000.. | GOOGLE01 | 20260328                    (envelope)           │
 │  ST       997 | 0001                                                                   │
 │  AK1      PO | 1                                                                       │
@@ -135,12 +135,12 @@ Paste any raw X12 directly from an email, FTP client, or EDI portal. The parser 
 │                                                                                        │
 │  Batch Queue Status                                                                    │
 │  ┌────────────────────────────────────────────────────────────────────────────────┐  │
-│  │  Hourly batch → edi-team@bergen.com   │  last sent: 2026-03-28 14:00 UTC      │  │
-│  │  Daily digest → edi-team@bergen.com   │  last sent: 2026-03-28 08:00 UTC      │  │
+│  │  Hourly batch → edi-team@google.com   │  last sent: 2026-03-28 14:00 UTC      │  │
+│  │  Daily digest → edi-team@google.com   │  last sent: 2026-03-28 08:00 UTC      │  │
 │  │                                                                                 │  │
-│  │  ops_manager  → ops-manager@bergen.com                                         │  │
-│  │  wms_team     → wms-team@bergen.com                                            │  │
-│  │  team_lead    → team-lead@bergen.com                                           │  │
+│  │  ops_manager  → ops-manager@google.com                                         │  │
+│  │  wms_team     → wms-team@google.com                                            │  │
+│  │  team_lead    → team-lead@google.com                                           │  │
 │  └────────────────────────────────────────────────────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -159,7 +159,7 @@ Paste any raw X12 directly from an email, FTP client, or EDI portal. The parser 
 │  Protocol:           [SFTP — SSH (port 22)               ▼]                           │
 │  Host:               [sftp.sml.example.com                 ]                          │
 │  Port:               [22      ]                                                        │
-│  Username:           [edi_bergen                           ]                          │
+│  Username:           [edi_google                           ]                          │
 │  Password:           [••••••••••••                         ]                          │
 │  Remote Path:        [/edi/inbound                         ]                          │
 │  Poll Interval (s):  [300     ]                                                        │
@@ -169,20 +169,20 @@ Paste any raw X12 directly from an email, FTP client, or EDI portal. The parser 
 │  SMTP / Email ───────────────────────────────────────────────────────────────────    │
 │  Host:               [smtp.office365.com                   ]                          │
 │  Port:               [587     ]                                                        │
-│  Username:           [edi-alerts@bergen.com                ]                          │
+│  Username:           [edi-alerts@google.com                ]                          │
 │  Password:           [••••••••••••••••••                   ]   ← App Password (M365) │
-│  From Address:       [edi-router@bergen.com                ]                          │
+│  From Address:       [edi-router@google.com                ]                          │
 │  Use SSL (465):      ○  (off = STARTTLS port 587)                                     │
 │                      [Test SMTP]  ✓ SMTP STARTTLS connection successful               │
 │                                                                                        │
 │  Routing Addresses ──────────────────────────────────────────────────────────────    │
 │  CRITICAL + envelope errors → ops_manager (immediate)                                 │
-│  Ops Manager:        [ops-manager@bergen.com               ]                          │
+│  Ops Manager:        [ops-manager@google.com               ]                          │
 │  HIGH (997) → edi_team + team_lead (immediate)                                        │
-│  EDI Team:           [edi-team@bergen.com                  ]                          │
+│  EDI Team:           [edi-team@google.com                  ]                          │
 │  HIGH (non-997) → wms_team (immediate)                                                │
-│  WMS Team:           [wms-team@bergen.com                  ]                          │
-│  Team Lead:          [team-lead@bergen.com                 ]                          │
+│  WMS Team:           [wms-team@google.com                  ]                          │
+│  Team Lead:          [team-lead@google.com                 ]                          │
 │  MEDIUM → edi_team hourly digest  │  LOW → edi_team daily digest                     │
 │ ──────────────────────────────────────────────────────────────────────────────────── │
 │  [    Save Settings    ]  ✓ Saved to config.toml                                      │
@@ -210,7 +210,7 @@ Paste any raw X12 directly from an email, FTP client, or EDI portal. The parser 
 │   8 │ E-UNK-TX    │ MEDIUM    │ 999 │ batched │ DEMO_UNKNOWN_TX.edi        │ 14:45:07 │
 │                                                                                        │
 │  ┌─── [DEMO EMAIL] E-997-REJ | CRITICAL ──────────────────────────────────────────┐  │
-│  │  To: ops-manager@bergen.com (demo)                                              │  │
+│  │  To: ops-manager@google.com (demo)                                              │  │
 │  │  Immediate email                                                                 │  │
 │  │  Subject: [CRITICAL] EDI Alert — E-997-REJ | TX 997                            │  │
 │  └─────────────────────────────────────────────────────────────────────────────────┘  │
