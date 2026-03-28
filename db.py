@@ -109,12 +109,26 @@ def update_edi_file_status(conn: sqlite3.Connection, file_id: int, status: str) 
     conn.commit()
 
 
-def check_duplicate_isa(conn: sqlite3.Connection, isa_control_number: str) -> bool:
-    """Return True if this ISA control number has been seen before."""
-    row = conn.execute(
-        "SELECT 1 FROM edi_files WHERE isa_control_number = ? LIMIT 1",
-        (isa_control_number,),
-    ).fetchone()
+def check_duplicate_isa(
+    conn: sqlite3.Connection,
+    isa_control_number: str,
+    exclude_file_id: Optional[int] = None,
+) -> bool:
+    """
+    Return True if this ISA control number has been seen before.
+    Pass exclude_file_id to ignore the current file's own row (avoids self-match
+    when the check runs after the file has already been inserted).
+    """
+    if exclude_file_id is not None:
+        row = conn.execute(
+            "SELECT 1 FROM edi_files WHERE isa_control_number = ? AND id != ? LIMIT 1",
+            (isa_control_number, exclude_file_id),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT 1 FROM edi_files WHERE isa_control_number = ? LIMIT 1",
+            (isa_control_number,),
+        ).fetchone()
     return row is not None
 
 

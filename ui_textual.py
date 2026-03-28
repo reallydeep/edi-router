@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import queue
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from typing import Optional
+
+from demo import run_demo as _run_demo_process
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -96,6 +99,7 @@ class LiveQueueTab(Container):
             Label("TX Type:", id="lbl-tx"),
             Select(TX_TYPE_OPTIONS, id="filter-tx", allow_blank=False),
             Button("Refresh", id="btn-refresh", variant="primary"),
+            Button("▶ Run Demo", id="btn-demo"),
             id="queue-filters",
         )
         yield DataTable(id="exception-table", cursor_type="row")
@@ -107,6 +111,8 @@ class LiveQueueTab(Container):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-refresh":
             self.app.refresh_table()
+        elif event.button.id == "btn-demo":
+            self.app.action_run_demo()
 
     @property
     def severity_filter(self) -> str:
@@ -376,6 +382,22 @@ Button {
     border: solid #333333;
     margin-right: 1;
 }
+
+#btn-demo {
+    background: #1a3a1a;
+    color: #44ff44;
+    border: solid #2a5a2a;
+}
+
+#btn-demo:hover {
+    background: #2a5a2a;
+}
+
+#btn-demo:disabled {
+    background: #111111;
+    color: #444444;
+    border: solid #222222;
+}
 """
 
 
@@ -401,6 +423,25 @@ class EDIRouterApp(App):
         self._conn = conn
         self._event_queue = event_queue
         self._status_message = "Ready"
+        self._demo_running = False
+
+    def action_run_demo(self) -> None:
+        """Launch the demo pipeline in a background thread."""
+        if self._demo_running:
+            self.notify("Demo is already running — wait for it to finish.", severity="warning")
+            return
+        self._demo_running = True
+        try:
+            btn = self.query_one("#btn-demo", Button)
+            btn.label = "⏳ Running..."
+            btn.disabled = True
+        except Exception:
+            pass
+        threading.Thread(
+            target=_run_demo_process,
+            args=(self._conn, self._event_queue, self._config),
+            daemon=True,
+        ).start()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -499,6 +540,67 @@ class EDIRouterApp(App):
             rule = event.get("rule", "")
             code = event.get("error_code", "")
             self.sub_title = f"Email sent: {code} via {rule}"
+
+        elif etype == "demo_start":
+            total = event.get("total", 0)
+            self.sub_title = f"Demo running — processing {total} sample files..."
+            self.notify(
+                f"Processing {total} sample EDI files through the full pipeline.",
+                title="Demo Mode Started",
+                severity="information",
+                timeout=4,
+            )
+
+        elif etype == "demo_file_clean":
+            filename = event.get("filename", "")
+            tx = event.get("tx_type", "")
+            self.sub_title = f"Demo: {filename} ({tx}) — no exceptions ✓"
+
+        elif etype == "demo_email_preview":
+            sev       = event.get("severity", "")
+            code      = event.get("error_code", "")
+            tx        = event.get("tx_type", "")
+            recipients = event.get("recipients", [])
+            delivery  = event.get("delivery", "")
+            subject   = event.get("subject", "")
+            to_str    = ", ".join(recipients)
+
+            # Map severity to Textual notification severity level
+            notif_sev = {
+                "CRITICAL": "error",
+                "HIGH":     "warning",
+                "MEDIUM":   "information",
+                "LOW":      "information",
+            }.get(sev, "information")
+
+            self.notify(
+                f"To: {to_str}\n{delivery}\nSubject: {subject}",
+                title=f"[DEMO EMAIL] {code} | {sev}",
+                severity=notif_sev,
+                timeout=6,
+            )
+            self.sub_title = f"Demo: would email {code} → {to_str}"
+            self.refresh_table()
+
+        elif etype == "demo_complete":
+            files = event.get("files", 0)
+            excs  = event.get("exceptions", 0)
+            self._demo_running = False
+            try:
+                btn = self.query_one("#btn-demo", Button)
+                btn.label = "▶ Run Demo"
+                btn.disabled = False
+            except Exception:
+                pass
+            self.refresh_table()
+            self.sub_title = f"Demo complete — {files} files, {excs} exceptions detected"
+            self.notify(
+                f"Processed {files} sample files and detected {excs} exceptions.\n"
+                "All exceptions are now in the Live Queue. No real emails were sent.",
+                title="Demo Complete",
+                severity="information",
+                timeout=8,
+            )
 
 
 # ---------------------------------------------------------------------------

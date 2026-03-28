@@ -108,9 +108,11 @@ def _check_transaction(
         return found  # can't do further TX-specific checks
 
     # Duplicate ISA control number
+    # Exclude the current file_id so the file doesn't match itself
+    # (classifier runs after insert, so the row already exists in the DB)
     if conn and tx.isa_control:
         from db import check_duplicate_isa
-        if check_duplicate_isa(conn, tx.isa_control):
+        if check_duplicate_isa(conn, tx.isa_control, exclude_file_id=file_id):
             found.append(EDIException(
                 error_code="E-DUP-ISA",
                 severity="MEDIUM",
