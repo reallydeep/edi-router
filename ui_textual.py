@@ -23,22 +23,24 @@ from demo import run_demo as _run_demo_process
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.widgets import (
     Button,
     DataTable,
     Footer,
     Header,
+    Input,
     Label,
     RichLog,
     Select,
     Static,
+    Switch,
     TabbedContent,
     TabPane,
     TextArea,
 )
 
-from config import AppConfig
+from config import AppConfig, save_config
 from db import get_exceptions_for_dashboard, get_last_batch_sent
 from parser import parse_raw, get_element
 
@@ -262,6 +264,343 @@ class RulesTab(Container):
 
 
 # ---------------------------------------------------------------------------
+# Settings Tab
+# ---------------------------------------------------------------------------
+
+PROTOCOL_OPTIONS = [("SFTP — SSH (port 22)", "sftp"), ("FTP — plain (port 21)", "ftp")]
+
+
+def _field_row(label: str, widget) -> Horizontal:
+    """Helper: one label + one input widget in a horizontal row."""
+    return Horizontal(
+        Label(label, classes="field-label"),
+        widget,
+        classes="field-row",
+    )
+
+
+class SettingsTab(VerticalScroll):
+    def __init__(self, config: AppConfig):
+        super().__init__()
+        self._config = config
+
+    def compose(self) -> ComposeResult:
+        c = self._config.connection
+        s = self._config.smtp
+        r = self._config.routing
+
+        # ── Connection ───────────────────────────────────────────────────
+        yield Label("Connection", classes="section-title")
+        yield _field_row("Protocol:", Select(
+            PROTOCOL_OPTIONS, value=c.protocol, id="conn-protocol", allow_blank=False,
+        ))
+        yield _field_row("Host:", Input(
+            value=c.host, placeholder="sftp.sml.example.com", id="conn-host",
+        ))
+        yield _field_row("Port:", Input(
+            value=str(c.port), placeholder="22", id="conn-port",
+        ))
+        yield _field_row("Username:", Input(
+            value=c.username, placeholder="edi_user", id="conn-username",
+        ))
+        yield _field_row("Password:", Input(
+            value=c.password, placeholder="••••••••", password=True, id="conn-password",
+        ))
+        yield _field_row("Remote Path:", Input(
+            value=c.remote_path, placeholder="/edi/inbound", id="conn-remote-path",
+        ))
+        yield _field_row("Poll Interval (s):", Input(
+            value=str(c.poll_interval_seconds), placeholder="300", id="conn-poll",
+        ))
+        yield Horizontal(
+            Label("Verify Host Key:", classes="field-label"),
+            Switch(value=c.verify_host_key, id="conn-verify-key"),
+            Label(" (enable in production with known_hosts)", classes="field-hint"),
+            classes="field-row",
+        )
+        yield Horizontal(
+            Button("Test Connection", id="btn-test-conn"),
+            Static("", id="conn-test-result", classes="test-result"),
+            classes="field-row",
+        )
+
+        # ── SMTP ─────────────────────────────────────────────────────────
+        yield Label("SMTP / Email", classes="section-title")
+        yield _field_row("Host:", Input(
+            value=s.host, placeholder="smtp.bergen.com", id="smtp-host",
+        ))
+        yield _field_row("Port:", Input(
+            value=str(s.port), placeholder="587", id="smtp-port",
+        ))
+        yield _field_row("Username:", Input(
+            value=s.username, placeholder="alerts@bergen.com", id="smtp-username",
+        ))
+        yield _field_row("Password:", Input(
+            value=s.password, placeholder="App Password / SMTP password",
+            password=True, id="smtp-password",
+        ))
+        yield _field_row("From Address:", Input(
+            value=s.from_address, placeholder="edi-router@bergen.com", id="smtp-from",
+        ))
+        yield Horizontal(
+            Label("Use SSL (port 465):", classes="field-label"),
+            Switch(value=s.use_ssl, id="smtp-ssl"),
+            Label(" (off = STARTTLS port 587, on = SSL port 465)", classes="field-hint"),
+            classes="field-row",
+        )
+        yield Horizontal(
+            Button("Test SMTP", id="btn-test-smtp"),
+            Static("", id="smtp-test-result", classes="test-result"),
+            classes="field-row",
+        )
+
+        # ── Routing ───────────────────────────────────────────────────────
+        yield Label("Routing Addresses", classes="section-title")
+        yield Label(
+            "CRITICAL + envelope errors → ops_manager (immediate)",
+            classes="routing-hint",
+        )
+        yield _field_row("Ops Manager:", Input(
+            value=r.ops_manager, placeholder="ops-manager@bergen.com", id="route-ops",
+        ))
+        yield Label(
+            "HIGH (997 rejections) → edi_team + team_lead (immediate)",
+            classes="routing-hint",
+        )
+        yield _field_row("EDI Team:", Input(
+            value=r.edi_team, placeholder="edi-team@bergen.com", id="route-edi",
+        ))
+        yield Label(
+            "HIGH (non-997) → wms_team (immediate)",
+            classes="routing-hint",
+        )
+        yield _field_row("WMS Team:", Input(
+            value=r.wms_team, placeholder="wms-team@bergen.com", id="route-wms",
+        ))
+        yield Label(
+            "HIGH (997) cc → team_lead (immediate)",
+            classes="routing-hint",
+        )
+        yield _field_row("Team Lead:", Input(
+            value=r.team_lead, placeholder="team-lead@bergen.com", id="route-lead",
+        ))
+        yield Label(
+            "MEDIUM → edi_team hourly digest  |  LOW → edi_team daily digest",
+            classes="routing-hint",
+        )
+
+        # ── Save ─────────────────────────────────────────────────────────
+        yield Horizontal(
+            Button("Save Settings", id="btn-save-settings", variant="primary"),
+            Static("", id="save-result", classes="test-result"),
+            classes="field-row save-row",
+        )
+
+    # ------------------------------------------------------------------
+    # Button handlers
+    # ------------------------------------------------------------------
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-save-settings":
+            self._save()
+        elif event.button.id == "btn-test-conn":
+            self._test_connection()
+        elif event.button.id == "btn-test-smtp":
+            self._test_smtp()
+
+    # ------------------------------------------------------------------
+    # Save
+    # ------------------------------------------------------------------
+
+    def _save(self) -> None:
+        result_widget = self.query_one("#save-result", Static)
+
+        try:
+            # Collect and validate all fields
+            protocol = self._select_value("conn-protocol", "sftp")
+            conn_host = self._input_value("conn-host")
+            conn_port = self._int_value("conn-port", 22)
+            conn_user = self._input_value("conn-username")
+            conn_pass = self._input_value("conn-password")
+            conn_path = self._input_value("conn-remote-path") or "/edi/inbound"
+            conn_poll = self._int_value("conn-poll", 300)
+            conn_verify = self.query_one("#conn-verify-key", Switch).value
+
+            smtp_host = self._input_value("smtp-host")
+            smtp_port = self._int_value("smtp-port", 587)
+            smtp_user = self._input_value("smtp-username")
+            smtp_pass = self._input_value("smtp-password")
+            smtp_from = self._input_value("smtp-from")
+            smtp_ssl  = self.query_one("#smtp-ssl", Switch).value
+
+            route_ops  = self._input_value("route-ops")
+            route_edi  = self._input_value("route-edi")
+            route_wms  = self._input_value("route-wms")
+            route_lead = self._input_value("route-lead")
+
+        except ValueError as e:
+            result_widget.update(f"[red]✗ {e}[/]")
+            return
+
+        # Update config dataclass in-place so the running watcher picks up changes
+        c = self._config.connection
+        c.protocol              = protocol
+        c.host                  = conn_host
+        c.port                  = conn_port
+        c.username              = conn_user
+        c.password              = conn_pass
+        c.remote_path           = conn_path
+        c.poll_interval_seconds = conn_poll
+        c.verify_host_key       = conn_verify
+
+        s = self._config.smtp
+        s.host         = smtp_host
+        s.port         = smtp_port
+        s.username     = smtp_user
+        s.password     = smtp_pass
+        s.from_address = smtp_from
+        s.use_ssl      = smtp_ssl
+
+        r = self._config.routing
+        r.ops_manager = route_ops
+        r.edi_team    = route_edi
+        r.wms_team    = route_wms
+        r.team_lead   = route_lead
+
+        # Write to config.toml
+        try:
+            save_config(self._config)
+            result_widget.update("[green]✓ Saved to config.toml[/]")
+            self.app.notify(
+                "Settings saved. Connection and email changes take effect on the next poll cycle.",
+                title="Settings Saved",
+                severity="information",
+                timeout=5,
+            )
+        except Exception as e:
+            result_widget.update(f"[red]✗ Write failed: {e}[/]")
+
+    # ------------------------------------------------------------------
+    # Test Connection
+    # ------------------------------------------------------------------
+
+    def _test_connection(self) -> None:
+        result = self.query_one("#conn-test-result", Static)
+        result.update("[yellow]Testing...[/]")
+        self.query_one("#btn-test-conn", Button).disabled = True
+
+        protocol = self._select_value("conn-protocol", "sftp")
+        host     = self._input_value("conn-host")
+        port     = self._int_value("conn-port", 22)
+        username = self._input_value("conn-username")
+        password = self._input_value("conn-password")
+        path     = self._input_value("conn-remote-path") or "/edi/inbound"
+
+        if not host:
+            result.update("[red]✗ Host is empty[/]")
+            self.query_one("#btn-test-conn", Button).disabled = False
+            return
+
+        def _run():
+            try:
+                if protocol == "sftp":
+                    import paramiko
+                    t = paramiko.Transport((host, port))
+                    t.connect(username=username, password=password)
+                    sftp = paramiko.SFTPClient.from_transport(t)
+                    files = sftp.listdir(path)
+                    sftp.close()
+                    t.close()
+                    msg = f"[green]✓ SFTP connected — {len(files)} item(s) in {path}[/]"
+                else:
+                    import ftplib
+                    ftp = ftplib.FTP()
+                    ftp.connect(host, port, timeout=15)
+                    ftp.login(username, password)
+                    ftp.cwd(path)
+                    files = ftp.nlst()
+                    ftp.quit()
+                    msg = f"[green]✓ FTP connected — {len(files)} item(s) in {path}[/]"
+            except Exception as e:
+                msg = f"[red]✗ {e}[/]"
+            self.app.call_from_thread(_update_conn_result, msg)
+
+        def _update_conn_result(msg: str) -> None:
+            result.update(msg)
+            self.query_one("#btn-test-conn", Button).disabled = False
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    # ------------------------------------------------------------------
+    # Test SMTP
+    # ------------------------------------------------------------------
+
+    def _test_smtp(self) -> None:
+        result = self.query_one("#smtp-test-result", Static)
+        result.update("[yellow]Testing...[/]")
+        self.query_one("#btn-test-smtp", Button).disabled = True
+
+        host    = self._input_value("smtp-host")
+        port    = self._int_value("smtp-port", 587)
+        use_ssl = self.query_one("#smtp-ssl", Switch).value
+        user    = self._input_value("smtp-username")
+        passwd  = self._input_value("smtp-password")
+
+        if not host:
+            result.update("[red]✗ Host is empty[/]")
+            self.query_one("#btn-test-smtp", Button).disabled = False
+            return
+
+        def _run():
+            import smtplib
+            try:
+                if use_ssl:
+                    with smtplib.SMTP_SSL(host, port, timeout=10) as srv:
+                        if user:
+                            srv.login(user, passwd)
+                        msg = "[green]✓ SMTP SSL connection successful[/]"
+                else:
+                    with smtplib.SMTP(host, port, timeout=10) as srv:
+                        srv.ehlo()
+                        srv.starttls()
+                        srv.ehlo()
+                        if user:
+                            srv.login(user, passwd)
+                        msg = "[green]✓ SMTP STARTTLS connection successful[/]"
+            except Exception as e:
+                msg = f"[red]✗ {e}[/]"
+            self.app.call_from_thread(_update_smtp_result, msg)
+
+        def _update_smtp_result(msg: str) -> None:
+            result.update(msg)
+            self.query_one("#btn-test-smtp", Button).disabled = False
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    # ------------------------------------------------------------------
+    # Field helpers
+    # ------------------------------------------------------------------
+
+    def _input_value(self, widget_id: str) -> str:
+        return self.query_one(f"#{widget_id}", Input).value.strip()
+
+    def _int_value(self, widget_id: str, default: int) -> int:
+        raw = self._input_value(widget_id)
+        try:
+            val = int(raw)
+            if val <= 0:
+                raise ValueError
+            return val
+        except ValueError:
+            raise ValueError(f"{widget_id}: must be a positive integer (got {raw!r})")
+
+    def _select_value(self, widget_id: str, default: str) -> str:
+        sel = self.query_one(f"#{widget_id}", Select)
+        v = sel.value
+        return default if v is Select.BLANK else (v or default)
+
+
+# ---------------------------------------------------------------------------
 # Main App
 # ---------------------------------------------------------------------------
 
@@ -398,6 +737,79 @@ Button {
     color: #444444;
     border: solid #222222;
 }
+
+/* ── Settings tab ─────────────────────────────────────────── */
+
+SettingsTab {
+    background: #0d0d0d;
+    padding: 1 2;
+}
+
+.section-title {
+    color: #ff8c00;
+    text-style: bold;
+    margin-top: 1;
+    margin-bottom: 1;
+    padding: 0 0 0 1;
+    border-bottom: solid #2a2a2a;
+    width: 1fr;
+}
+
+.field-row {
+    height: auto;
+    margin-bottom: 1;
+    align: left middle;
+}
+
+.field-label {
+    width: 22;
+    color: #888888;
+    padding: 0 1 0 1;
+    text-align: right;
+}
+
+.field-hint {
+    color: #555555;
+    padding: 0 1;
+    width: 1fr;
+}
+
+.routing-hint {
+    color: #555555;
+    padding: 0 0 0 23;
+    margin-bottom: 0;
+}
+
+SettingsTab Input {
+    width: 40;
+    background: #111111;
+    color: #cccccc;
+    border: tall #2a2a2a;
+}
+
+SettingsTab Input:focus {
+    border: tall #ff8c00;
+}
+
+SettingsTab Select {
+    width: 40;
+}
+
+SettingsTab Switch {
+    margin: 0 1;
+}
+
+.test-result {
+    color: #888888;
+    padding: 0 1;
+    width: 1fr;
+}
+
+.save-row {
+    margin-top: 2;
+    border-top: solid #2a2a2a;
+    padding-top: 1;
+}
 """
 
 
@@ -410,6 +822,7 @@ class EDIRouterApp(App):
         Binding("1", "focus_tab('tab-queue')", "Queue"),
         Binding("2", "focus_tab('tab-parser')", "Parser"),
         Binding("3", "focus_tab('tab-rules')", "Rules"),
+        Binding("4", "focus_tab('tab-settings')", "Settings"),
     ]
 
     def __init__(
@@ -452,6 +865,8 @@ class EDIRouterApp(App):
                 yield ParserTab()
             with TabPane("Rules [3]", id="tab-rules"):
                 yield RulesTab(self._config, self._conn)
+            with TabPane("Settings [4]", id="tab-settings"):
+                yield SettingsTab(self._config)
         yield Footer()
 
     def on_mount(self) -> None:

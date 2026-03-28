@@ -115,6 +115,49 @@ def load_config(path: Optional[Path] = None) -> AppConfig:
     )
 
 
+def save_config(config: AppConfig, path: Optional[Path] = None) -> None:
+    """
+    Write an AppConfig back to config.toml.
+    Overwrites the file in-place; safe to call from the Settings tab.
+    """
+    target = path or config_path()
+    c = config.connection
+    s = config.smtp
+    r = config.routing
+
+    # Escape any double-quotes in string values so the TOML stays valid
+    def q(val: str) -> str:
+        return val.replace("\\", "\\\\").replace('"', '\\"')
+
+    content = (
+        "[connection]\n"
+        f'protocol = "{q(c.protocol)}"\n'
+        f'host = "{q(c.host)}"\n'
+        f"port = {c.port}\n"
+        f'username = "{q(c.username)}"\n'
+        f'password = "{q(c.password)}"\n'
+        f'remote_path = "{q(c.remote_path)}"\n'
+        f"poll_interval_seconds = {c.poll_interval_seconds}\n"
+        f"verify_host_key = {str(c.verify_host_key).lower()}\n"
+        "\n"
+        "[smtp]\n"
+        f'host = "{q(s.host)}"\n'
+        f"port = {s.port}\n"
+        f'username = "{q(s.username)}"\n'
+        f'password = "{q(s.password)}"\n'
+        f'from_address = "{q(s.from_address)}"\n'
+        f"use_ssl = {str(s.use_ssl).lower()}\n"
+        "# Microsoft 365: generate an App Password in M365 admin and use it above\n"
+        "\n"
+        "[routing]\n"
+        f'ops_manager = "{q(r.ops_manager)}"\n'
+        f'edi_team = "{q(r.edi_team)}"\n'
+        f'wms_team = "{q(r.wms_team)}"\n'
+        f'team_lead = "{q(r.team_lead)}"\n'
+    )
+    target.write_text(content, encoding="utf-8")
+
+
 if __name__ == "__main__":
     cfg = load_config()
     print(f"Connection:  {cfg.connection.protocol.upper()} → {cfg.connection.host}:{cfg.connection.port}")
