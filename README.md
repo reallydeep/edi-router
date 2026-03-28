@@ -39,6 +39,7 @@ Built for warehouse operations teams that receive high volumes of EDI from tradi
 - [Routing Rules](#routing-rules)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
+- [Custom Email Templates](#custom-email-templates)
 - [Demo Mode](#demo-mode)
 - [Windows Deployment](#windows-deployment)
 - [Project Structure](#project-structure)
@@ -66,7 +67,7 @@ Built for warehouse operations teams that receive high volumes of EDI from tradi
 │   4 │ E-DUP-ISA   │ MEDIUM           │ 850 │ batched  │ AMZN_850_0328_002.edi    │ 2026-03-28 11:20 │ Duplicate ISA control number: 0 │
 │   5 │ E-STALE     │ LOW              │ 856 │ batched  │ AMZN_856_0327_001.edi    │ 2026-03-28 09:15 │ Transaction 52h old (ISA date 2 │
 │                                                                                       │
-│ ^q Quit  r Refresh  1 Queue  2 Parser  3 Rules  4 Settings                           │
+│ ^q Quit  r Refresh  1 Queue  2 Parser  3 Rules  4 Settings  5 Email Log  6 Templates  │
 └───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -191,6 +192,67 @@ Paste any raw X12 directly from an email, FTP client, or EDI portal. The parser 
 
 ---
 
+### Email Log Tab — Full Send History
+
+```
+┌─ EDI Exception Auto-Router ──────────────────────────────────────────────────────────┐
+│                                                                                        │
+│  Live Queue [1] │ Parser [2] │ Rules [3] │ Settings [4] │ Email Log [5] │ Templates [6]│
+│ ──────────────────────────────────────────────────────────────────────────────────── │
+│  Email Send Log                                          [Refresh]                    │
+│                                                                                        │
+│  Time             │ Error Code  │ Severity │ TX  │ Recipient               │ Rule              │ Status  │
+│ ──────────────────┼─────────────┼──────────┼─────┼─────────────────────────┼───────────────────┼──────── │
+│  2026-03-28 14:31 │ E-997-REJ   │ CRITICAL │ 997 │ ops-manager@bergen.com  │ rule-1-env-error  │ ✓ sent │
+│  2026-03-28 14:31 │ E-810-AMT   │ HIGH     │ 810 │ wms-team@bergen.com     │ rule-4-high       │ ✓ sent │
+│  2026-03-28 14:30 │ E-856-STR   │ HIGH     │ 856 │ wms-team@bergen.com     │ rule-4-high       │ ✓ sent │
+│  2026-03-28 14:00 │ —           │ —        │ —   │ edi-team@bergen.com     │ batch-hourly      │ ✓ sent │
+│  2026-03-28 13:00 │ —           │ —        │ —   │ edi-team@bergen.com     │ batch-hourly      │ ✓ sent │
+│                                                                                        │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+Every email the router dispatches is recorded here — immediate alerts and batch digests alike. Shows the recipient, which rule matched, and whether the SMTP send succeeded or failed (with the error message if it failed). Auto-refreshes whenever a new email goes out; manual Refresh button available.
+
+---
+
+### Templates Tab — Custom Email Content Per Error Code
+
+```
+┌─ EDI Exception Auto-Router ──────────────────────────────────────────────────────────┐
+│                                                                                        │
+│  Live Queue [1] │ Parser [2] │ Rules [3] │ Settings [4] │ Email Log [5] │ Templates [6]│
+│ ──────────────────────────────────────────────────────────────────────────────────── │
+│  Saved Custom Templates                                                                │
+│  Click a row to load it into the editor below.                                        │
+│                                                                                        │
+│  Error Code  │ Custom Subject                                                          │
+│ ─────────────┼────────────────────────────────────────────────────────────────────── │
+│  E-997-REJ   │ ACTION REQUIRED: EDI Rejection from SML — {error_code} | TX {tx_ty... │
+│  E-810-AMT   │ Invoice Discrepancy Detected — {error_code}                            │
+│                                                                                        │
+│  Edit Template ──────────────────────────────────────────────────────────────────    │
+│  Placeholders:  {error_code}  {severity}  {tx_type}  {description}  {filename}        │
+│  Error Code:    [E-997-REJ                        ]                                   │
+│  Subject:       [ACTION REQUIRED: EDI Rejection from SML — {error_code} | TX {tx_type}]│
+│  Body:                                                                                 │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐ │
+│  │ SML has rejected our EDI submission.                                             │ │
+│  │                                                                                  │ │
+│  │ Error:    {error_code}                                                           │ │
+│  │ File:     {filename}                                                             │ │
+│  │ Details:  {description}                                                          │ │
+│  │                                                                                  │ │
+│  │ Please contact SML's EDI coordinator and reference the AK3/AK4 segments.        │ │
+│  └──────────────────────────────────────────────────────────────────────────────────┘ │
+│  Leave body blank to use the default body.                                            │
+│ ──────────────────────────────────────────────────────────────────────────────────── │
+│  [Save Template]  [Delete Template]  [Reset Fields]          ✓ Saved                 │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
 ### Demo Mode — See the Full Pipeline Without Live Credentials
 
 ```
@@ -250,10 +312,12 @@ Toast notifications appear for each routed exception — recipient, subject line
 
 **TUI Dashboard**
 - Dark amber terminal aesthetic (runs in any terminal, no GPU required)
-- Live Queue with severity-colored badges, filters by severity and TX type, auto-refresh every 30 seconds
-- Parser tab for ad-hoc inspection of raw X12 — paste directly from email or FTP client
-- Routing Rules tab shows the live rule table and last batch flush timestamps
-- Settings tab — full configuration UI with masked password fields, Test Connection and Test SMTP buttons, writes directly to `config.toml`
+- **Live Queue** (1) — severity-colored exception table with filters by severity and TX type, auto-refresh every 30 seconds
+- **Parser** (2) — paste any raw X12 directly for ad-hoc inspection and exception detection
+- **Rules** (3) — live rule table and last batch flush timestamps
+- **Settings** (4) — full configuration UI with masked password fields, Test Connection and Test SMTP buttons, writes directly to `config.toml`
+- **Email Log** (5) — complete send history: every immediate alert and batch digest, with recipient, rule, and success/fail status
+- **Templates** (6) — create and edit custom email subject and body per error code; changes take effect immediately without restart
 
 **Demo Mode**
 - Single button runs 7 realistic fake EDI files through the full pipeline
@@ -417,6 +481,46 @@ Rules are evaluated top-down. The first matching rule wins.
 
 ---
 
+## Custom Email Templates
+
+By default the router uses a built-in subject and body for every alert email. The **Templates tab** (press `6`) lets you override the subject and body for any specific error code.
+
+### How it works
+
+1. Open the Templates tab
+2. Type the error code you want to customise (e.g. `E-997-REJ`) or click a row in the Saved Templates table to load an existing one
+3. Write your subject and body — use placeholders where you want dynamic values
+4. Click **Save Template** — it writes to `templates.toml` and takes effect on the very next email (no restart needed)
+5. Click **Delete Template** to remove it and revert to the default
+
+### Placeholders
+
+| Placeholder | Replaced with |
+|---|---|
+| `{error_code}` | The exception's error code, e.g. `E-997-REJ` |
+| `{severity}` | `CRITICAL`, `HIGH`, `MEDIUM`, or `LOW` |
+| `{tx_type}` | Transaction type, e.g. `997`, `810`, `856` |
+| `{description}` | The classifier's human-readable description of the exception |
+| `{filename}` | The EDI filename that contained the exception |
+
+### Example
+
+```toml
+# templates.toml — created/managed by the Templates tab
+
+["E-997-REJ"]
+subject = "ACTION REQUIRED: SML rejected our EDI — {error_code} | TX {tx_type}"
+body = "SML has rejected our EDI submission.\n\nError:   {error_code}\nFile:    {filename}\nDetails: {description}\n\nContact SML's EDI coordinator and reference the AK3/AK4 segments."
+
+["E-810-AMT"]
+subject = "Invoice Discrepancy — {error_code} | {filename}"
+body = "An invoice amount mismatch was detected.\n\nFile: {filename}\n{description}\n\nVerify quantities and unit prices with SML before approving payment."
+```
+
+Templates only apply to **immediate emails** (rules 1–4 — CRITICAL and HIGH). Batch digest emails for MEDIUM and LOW exceptions always use the default format since they bundle multiple exceptions into a single message.
+
+---
+
 ## Quick Start
 
 **Prerequisites:** Python 3.9+ and pip.
@@ -432,9 +536,10 @@ pip install -r requirements.txt
 # 3. Launch the app
 python main.py
 
-# The Settings tab (press 4) opens immediately.
-# Fill in your connection and email details, click Save, then Test Connection / Test SMTP.
+# Press 4 (Settings) to fill in your connection and email details.
+# Click Save, then Test Connection / Test SMTP to verify.
 # Press 1 to return to the Live Queue — the watcher starts polling on the next cycle.
+# Press 6 (Templates) to customise email content per error code (optional).
 ```
 
 **Want to see it without any credentials?** Press `1` for Live Queue, then click **▶ Run Demo**. Seven realistic EDI files are processed in real time — exceptions appear in the table and toast notifications show every email that would be sent.
@@ -560,6 +665,8 @@ edi-router/
 ├── main.py           # Entry point — wires daemon thread + Textual TUI + shutdown
 ├── config.py         # TOML loader/writer, dataclasses, PyInstaller-safe path helpers
 ├── config.toml       # Configuration template (all values empty — safe to commit)
+├── templates.py      # Custom email template load/save/render (reads templates.toml)
+├── templates.toml    # Created on first Save in Templates tab — not committed
 ├── db.py             # SQLite schema, WAL mode, thread-safe read/write helpers
 ├── parser.py         # X12 segment parser — ISA delimiter detection, state machine
 ├── classifier.py     # 12 exception detection rules + severity scoring
@@ -567,7 +674,7 @@ edi-router/
 ├── mailer.py         # smtplib immediate emails + hourly/daily batch digests
 ├── watcher.py        # Background daemon — SFTP/FTP poll loop + event queue
 ├── demo.py           # 7 built-in EDI samples + demo pipeline runner
-├── ui_textual.py     # Textual TUI — 4 tabs: Live Queue, Parser, Rules, Settings
+├── ui_textual.py     # Textual TUI — 6 tabs: Live Queue, Parser, Rules, Settings, Email Log, Templates
 ├── requirements.txt
 │
 └── .github/
