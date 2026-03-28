@@ -60,11 +60,11 @@ Built for warehouse operations teams that receive high volumes of EDI from tradi
 │                                                                                       │
 │  ID │ Code        │ Severity         │ TX  │ Status   │ File                    │ Detected         │ Description                     │
 │ ────┼─────────────┼──────────────────┼─────┼──────────┼─────────────────────────┼──────────────────┼─────────────────────────────── │
-│   1 │ E-997-REJ   │ CRITICAL         │ 997 │ sent     │ SML_997_0328_001.edi    │ 2026-03-28 14:31 │ 997 Rejected: trading partner.. │
-│   2 │ E-810-AMT   │ HIGH             │ 810 │ sent     │ SML_810_0328_001.edi    │ 2026-03-28 14:31 │ Invoice amount mismatch: TDS01= │
-│   3 │ E-856-STR   │ HIGH             │ 856 │ sent     │ SML_856_0328_001.edi    │ 2026-03-28 14:30 │ 856 ASN missing required BSN se │
-│   4 │ E-DUP-ISA   │ MEDIUM           │ 850 │ batched  │ SML_850_0328_002.edi    │ 2026-03-28 11:20 │ Duplicate ISA control number: 0 │
-│   5 │ E-STALE     │ LOW              │ 856 │ batched  │ SML_856_0327_001.edi    │ 2026-03-28 09:15 │ Transaction 52h old (ISA date 2 │
+│   1 │ E-997-REJ   │ CRITICAL         │ 997 │ sent     │ AMZN_997_0328_001.edi    │ 2026-03-28 14:31 │ 997 Rejected: trading partner.. │
+│   2 │ E-810-AMT   │ HIGH             │ 810 │ sent     │ AMZN_810_0328_001.edi    │ 2026-03-28 14:31 │ Invoice amount mismatch: TDS01= │
+│   3 │ E-856-STR   │ HIGH             │ 856 │ sent     │ AMZN_856_0328_001.edi    │ 2026-03-28 14:30 │ 856 ASN missing required BSN se │
+│   4 │ E-DUP-ISA   │ MEDIUM           │ 850 │ batched  │ AMZN_850_0328_002.edi    │ 2026-03-28 11:20 │ Duplicate ISA control number: 0 │
+│   5 │ E-STALE     │ LOW              │ 856 │ batched  │ AMZN_856_0327_001.edi    │ 2026-03-28 09:15 │ Transaction 52h old (ISA date 2 │
 │                                                                                       │
 │ ^q Quit  r Refresh  1 Queue  2 Parser  3 Rules  4 Settings                           │
 └───────────────────────────────────────────────────────────────────────────────────────┘
@@ -84,9 +84,9 @@ Severity badges are color-coded — **CRITICAL** in red, **HIGH** in amber, **ME
 │  Paste raw X12 EDI below, then click Parse:                                           │
 │                                                                                        │
 │  ┌───────────────────────────────────────────────────────────────────────────────┐   │
-│  │ ISA*00*          *00*          *ZZ*BERGEN01       *ZZ*SML0000001     *260328*  │   │
+│  │ ISA*00*          *00*          *ZZ*GOOGLE01       *ZZ*AMZN000001     *260328*  │   │
 │  │ 1000*^*00501*000000042*0*P*>~                                                  │   │
-│  │ GS*FA*SML0000001*BERGEN01*20260328*1005*2*X*005010~                            │   │
+│  │ GS*FA*AMZN000001*GOOGLE01*20260328*1005*2*X*005010~                            │   │
 │  │ ST*997*0001~                                                                   │   │
 │  │ AK1*PO*1~  AK2*850*0001~  AK3*PO1*6**8~  AK5*R*5~  AK9*R*1*1*0~  SE*6*0001~ │   │
 │  └───────────────────────────────────────────────────────────────────────────────┘   │
@@ -95,11 +95,11 @@ Severity badges are color-coded — **CRITICAL** in red, **HIGH** in amber, **ME
 │  Transactions found: 1                                                                 │
 │  ──── Transaction 1: 997 ────                                                          │
 │  ISA Control:  000000042                                                               │
-│  ST Control:   0001        Sender: SML0000001    Receiver: BERGEN01                   │
+│  ST Control:   0001        Sender: AMZN000001    Receiver: GOOGLE01                   │
 │  Date/Time:    260328 1005     Segments: 8                                             │
 │                                                                                        │
 │  ISA      00 |           | 00 |           | ZZ | BERGEN01        (envelope)           │
-│  GS       FA | SML000... | BERGEN01 | 20260328                    (envelope)           │
+│  GS       FA | AMZN000.. | GOOGLE01 | 20260328                    (envelope)           │
 │  ST       997 | 0001                                                                   │
 │  AK1      PO | 1                                                                       │
 │  AK5      R  | 5                          ← rejection flag                             │
@@ -279,7 +279,7 @@ Toast notifications appear for each routed exception — recipient, subject line
   ┌────────────────────────────────────────────────────────────┐
   │                                                            │
   │  SFTP/FTP Server  ──pulls──►  EDI Router (this app)       │
-  │  (SML drop zone)             │                            │
+  │  (Amazon drop zone)          │                            │
   │                              ├── SQLite DB (local file)   │
   │                              │   exceptions, routing log  │
   │                              │                            │
@@ -288,7 +288,7 @@ Toast notifications appear for each routed exception — recipient, subject line
   │                                               │            │
   │                                               ▼            │
   │                                        Email recipients    │
-  │                                        (Bergen staff)      │
+  │                                        (Google staff)      │
   └────────────────────────────────────────────────────────────┘
 
   No telemetry. No analytics. No cloud APIs. No internet required.
@@ -312,7 +312,7 @@ Credentials (SFTP password, SMTP password) are stored in `config.toml` as plaint
 
 3. **Never commit `config.toml` with real credentials to git.** The `.gitignore` in this repo excludes `*.db` files but intentionally keeps `config.toml` as a blank template. The committed version has all fields set to empty strings.
 
-4. **SFTP is strongly preferred over FTP.** SFTP runs over SSH (port 22) and encrypts the entire session including credentials and file content. Plain FTP transmits everything in cleartext. If SML supports SFTP, use it.
+4. **SFTP is strongly preferred over FTP.** SFTP runs over SSH (port 22) and encrypts the entire session including credentials and file content. Plain FTP transmits everything in cleartext. If your trading partner supports SFTP, use it.
 
 5. **STARTTLS is preferred over plain SMTP.** The default configuration uses port 587 with STARTTLS, which upgrades the SMTP connection to TLS before any credentials are sent. SSL on port 465 is equally secure. Plain SMTP on port 25 is not supported.
 
@@ -649,7 +649,7 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 <div align="center">
 
-Built for Bergen Logistics EDI Operations
+Built for modern EDI operations teams
 
 *Parse it. Classify it. Route it. Before it becomes a problem.*
 
