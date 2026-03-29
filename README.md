@@ -158,7 +158,7 @@ Paste any raw X12 directly from an email, FTP client, or EDI portal. The parser 
 │                                                                                        │
 │  Connection ─────────────────────────────────────────────────────────────────────    │
 │  Protocol:           [SFTP — SSH (port 22)               ▼]                           │
-│  Host:               [sftp.sml.example.com                 ]                          │
+│  Host:               [sftp.walmart.example.com                 ]                          │
 │  Port:               [22      ]                                                        │
 │  Username:           [edi_google                           ]                          │
 │  Password:           [••••••••••••                         ]                          │
@@ -228,22 +228,22 @@ Every email the router dispatches is recorded here — immediate alerts and batc
 │                                                                                        │
 │  Error Code  │ Custom Subject                                                          │
 │ ─────────────┼────────────────────────────────────────────────────────────────────── │
-│  E-997-REJ   │ ACTION REQUIRED: EDI Rejection from SML — {error_code} | TX {tx_ty... │
+│  E-997-REJ   │ ACTION REQUIRED: EDI Rejection from Amazon — {error_code} | TX {tx_ty... │
 │  E-810-AMT   │ Invoice Discrepancy Detected — {error_code}                            │
 │                                                                                        │
 │  Edit Template ──────────────────────────────────────────────────────────────────    │
 │  Placeholders:  {error_code}  {severity}  {tx_type}  {description}  {filename}        │
 │  Error Code:    [E-997-REJ                        ]                                   │
-│  Subject:       [ACTION REQUIRED: EDI Rejection from SML — {error_code} | TX {tx_type}]│
+│  Subject:       [ACTION REQUIRED: EDI Rejection from Amazon — {error_code} | TX {tx_type}]│
 │  Body:                                                                                 │
 │  ┌──────────────────────────────────────────────────────────────────────────────────┐ │
-│  │ SML has rejected our EDI submission.                                             │ │
+│  │ Amazon has rejected our EDI submission.                                             │ │
 │  │                                                                                  │ │
 │  │ Error:    {error_code}                                                           │ │
 │  │ File:     {filename}                                                             │ │
 │  │ Details:  {description}                                                          │ │
 │  │                                                                                  │ │
-│  │ Please contact SML's EDI coordinator and reference the AK3/AK4 segments.        │ │
+│  │ Please contact Amazon's EDI coordinator and reference the AK3/AK4 segments.        │ │
 │  └──────────────────────────────────────────────────────────────────────────────────┘ │
 │  Leave body blank to use the default body.                                            │
 │ ──────────────────────────────────────────────────────────────────────────────────── │
@@ -509,12 +509,12 @@ By default the router uses a built-in subject and body for every alert email. Th
 # templates.toml — created/managed by the Templates tab
 
 ["E-997-REJ"]
-subject = "ACTION REQUIRED: SML rejected our EDI — {error_code} | TX {tx_type}"
-body = "SML has rejected our EDI submission.\n\nError:   {error_code}\nFile:    {filename}\nDetails: {description}\n\nContact SML's EDI coordinator and reference the AK3/AK4 segments."
+subject = "ACTION REQUIRED: Amazon rejected our EDI — {error_code} | TX {tx_type}"
+body = "Amazon has rejected our EDI submission.\n\nError:   {error_code}\nFile:    {filename}\nDetails: {description}\n\nContact Amazon's EDI coordinator and reference the AK3/AK4 segments."
 
 ["E-810-AMT"]
 subject = "Invoice Discrepancy — {error_code} | {filename}"
-body = "An invoice amount mismatch was detected.\n\nFile: {filename}\n{description}\n\nVerify quantities and unit prices with SML before approving payment."
+body = "An invoice amount mismatch was detected.\n\nFile: {filename}\n{description}\n\nVerify quantities and unit prices with Amazon before approving payment."
 ```
 
 Templates only apply to **immediate emails** (rules 1–4 — CRITICAL and HIGH). Batch digest emails for MEDIUM and LOW exceptions always use the default format since they bundle multiple exceptions into a single message.
